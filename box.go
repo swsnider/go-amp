@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"unicode/utf8"
 )
 
@@ -45,7 +46,10 @@ func Deserialize(b []byte) (Box, error) {
 	if len(b) < 2 {
 		return nil, fmt.Errorf("serialized AMP box length was %v, shorter than two bytes, which is illegal", len(b))
 	}
-	buf := bytes.NewBuffer(b)
+	return Decode(bytes.NewBuffer(b))
+}
+
+func Decode(buf io.Reader) (Box, error) {
 	box := make(Box)
 	for {
 		var l uint16
