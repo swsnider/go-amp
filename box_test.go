@@ -40,7 +40,8 @@ func TestDeserializeFromPython(t *testing.T) {
 }
 
 func TestSerializeOrder(t *testing.T) {
-  got, err := pythonGeneratedBox.Serialize()
+  box := Box{"_ask": "1", "_command": "listpeer", "21": "notfirst"}
+  got, err := box.Serialize()
   if err != nil {
     t.Fatal(err)
   }
@@ -49,5 +50,47 @@ func TestSerializeOrder(t *testing.T) {
   }
   if string(got[11:19]) != "_command" {
     t.Fatal("_command key is not the second key in the serialization.")
+  }
+
+  delete(box, "_ask")
+  box["_answer"] = "2"
+  got, err = box.Serialize()
+  if err != nil {
+    t.Fatal(err)
+  }
+  if string(got[2:9]) != "_answer" {
+    t.Fatal("_answer key is not the first key in the serialization.")
+  }
+}
+
+type unmarshalTest struct {
+  SomeValue   string `amp:"some_value"`
+  SomeBool    bool   `amp:"some_bool"`
+  SomeInt     int
+  SomeFloat   float64
+  AnotherBool bool `amp:"another_bool"`
+}
+
+func TestUnmarshal(t *testing.T) {
+  x := &unmarshalTest{}
+  box := Box{"some_value": "a value", "some_bool": "True", "SomeInt": "7", "SomeFloat": "8.2", "another_bool": "False"}
+  err := box.Unmarshal(x)
+  if err != nil {
+    t.Fatal(err)
+  }
+  if x.SomeValue != "a value" {
+    t.Errorf("x.SomeValue = %q, expected \"a value\"", x.SomeValue)
+  }
+  if !x.SomeBool {
+    t.Errorf("x.SomeBool = %v, expected true", x.SomeBool)
+  }
+  if x.AnotherBool {
+    t.Errorf("x.AnotherBool = %v, expected false", x.AnotherBool)
+  }
+  if x.SomeInt != 7 {
+    t.Errorf("x.SomeInt = %v, expected 7", x.SomeInt)
+  }
+  if x.SomeFloat != 8.2 {
+    t.Errorf("x.SomeFloat = %v, expected 8.2", x.SomeFloat)
   }
 }

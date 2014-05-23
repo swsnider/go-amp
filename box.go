@@ -5,6 +5,8 @@ import (
   "encoding/binary"
   "fmt"
   "io"
+  "reflect"
+  "strconv"
   "unicode/utf8"
 )
 
@@ -35,22 +37,28 @@ func writeKV(buf *bytes.Buffer, k string, v string) error {
 func (b Box) Serialize() ([]byte, error) {
   var err error
   buf := new(bytes.Buffer)
-  ask, askok := b["_ask"]
-  cmd, cmdok := b["_command"]
-  if !cmdok {
-    return nil, fmt.Errorf("_command key is not present, despite being required.")
-  }
-  if askok {
+
+  if ask, ok := b["_ask"]; ok {
     err = writeKV(buf, "_ask", ask)
     if err != nil {
       return nil, err
     }
+  } else if answer, ok := b["_answer"]; ok {
+    err = writeKV(buf, "_answer", answer)
+    if err != nil {
+      return nil, err
+    }
   }
-  err = writeKV(buf, "_command", cmd)
-  if err != nil {
-    return nil, err
+  if cmd, ok := b["_command"]; ok {
+    err = writeKV(buf, "_command", cmd)
+    if err != nil {
+      return nil, err
+    }
   }
   for k, v := range b {
+    if k == "_ask" || k == "_command" || k == "_answer" {
+      continue
+    }
     if !utf8.ValidString(k) {
       return nil, fmt.Errorf("key %q is not valid utf8", k)
     }
@@ -116,4 +124,60 @@ func Decode(buf io.Reader) (Box, error) {
     box[k] = string(vbytes)
   }
   return box, nil
+}
+
+func (box Box) Unmarshal(x interface{}) error {
+  if x == nil {
+    return nil
+  }
+  rv := reflect.ValueOf(x).Elem()
+  rt := rv.Type()
+  l := rv.NumField()
+  for i := 0; i < l; i++ {
+    f := rv.Field(i)
+    if !f.IsValid() {
+      continue
+    }
+    if !f.CanSet() {
+      continue
+    }
+    nameTag := rt.Field(i).Tag.Get("amp")
+    if nameTag == "" {
+      nameTag = rt.Field(i).Name
+    }
+    if _, ok := box[nameTag]; !ok {
+      continue
+    }
+    switch f.Type().Name() {
+    case "string":
+      f.SetString(box[nameTag])
+    case "int":
+      i, err := strconv.Atoi(box[nameTag])
+      if err != nil {
+        return err
+      }
+      f.SetInt(int64(i))
+    case "float32", "float64":
+      var width int
+      if f.Type().Name() == "float32" {
+        width = 32
+      } else {
+        width = 64
+      }
+      fl, err := strconv.ParseFloat(box[nameTag], width)
+      if err != nil {
+        return err
+      }
+      f.SetFloat(fl)
+    case "bool":
+      if box[nameTag] == "True" {
+        f.SetBool(true)
+      } else if box[nameTag] == "False" {
+        f.SetBool(false)
+      } else {
+        return fmt.Errorf("%q is not a valid boolean.", box[nameTag])
+      }
+    }
+  }
+  return nil
 }
